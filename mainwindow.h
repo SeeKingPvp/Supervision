@@ -6,6 +6,9 @@
 #include "widgetlidar.h"
 #include "widgetvoiture.h"
 #include <QMainWindow>
+#include <array>
+
+class QLabel;
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -18,16 +21,20 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    //#define ip = "10.98.32.173"
     explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow() override;
     void start();
     void stop();
+
 private:
+    // Met à jour un label d'état : "Nom : connecté" (vert) ou "Nom : déconnecté" (rouge)
+    void setStatus(QLabel *label, const QString &nom, bool connecte, bool feminin = false);
+
     Ui::MainWindow *ui;
-    TCPclient startS;
+    TCPclient startS;           // commandes "start" / "stop"
     WidgetLidar lidar360;
     WidgetVoiture voiture;
     WidgetBatterie batterie;
+    std::array<QLabel *, 4> tfLabels;   // TFmini15 à TFmini18
 };
 #endif // MAINWINDOW_H

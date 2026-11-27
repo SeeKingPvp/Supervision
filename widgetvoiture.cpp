@@ -11,6 +11,27 @@ WidgetVoiture::WidgetVoiture(const QString &host, int port, QWidget *parent)
     angle = 0.0;
     setMinimumSize(200, 200);
     connect(&tcpvoiture, &TCPclient::newDatas, this, &WidgetVoiture::processTcpDatas);
+    connect(&tcpvoiture, &TCPclient::connectionChanged, this, &WidgetVoiture::onConnectionChanged);
+}
+
+// Mémorise l'état d'un TFmini et prévient l'IHM uniquement s'il a changé
+void WidgetVoiture::setTfState(int index, bool connected)
+{
+    if (tfConnected[index] != connected) {
+        tfConnected[index] = connected;
+        emit tfStateChanged(index, connected);
+    }
+}
+
+// Si la voiture se déconnecte, l'état des TFmini est inconnu : on les passe tous à "déconnecté"
+void WidgetVoiture::onConnectionChanged(bool connected)
+{
+    if (!connected) {
+        for (int i = 0; i < 4; i++)
+            setTfState(i, false);
+        update();
+    }
+    emit connectionChanged(connected);
 }
 void WidgetVoiture::paintEvent(QPaintEvent *event)
 {
@@ -94,7 +115,7 @@ void WidgetVoiture::processTcpDatas(QString data)
     // États des 4 TFmini (optionnels)
     if (parts.size() >= 6) {
         for (int i = 0; i < 4; i++)
-            tfConnected[i] = (parts[2 + i].trimmed().toInt() == 1);
+            setTfState(i, parts[2 + i].trimmed().toInt() == 1);
     }
 
     update();

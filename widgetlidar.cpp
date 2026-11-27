@@ -1,19 +1,21 @@
 #include "widgetlidar.h"
 #include <QPainter>
+#include <QStringList>
 #include <QtMath>
 
 WidgetLidar::WidgetLidar(const QString &host, int port, QWidget *parent)
     : QWidget(parent)
-    ,tcplidar(host, port)
+    , tcplidar(host, port)
 {
-    for (int i = 0; i < 360; i++)
-        distancesLidar[i] = 0;             // aucune mesure au départ
+    distancesLidar.fill(0);                // aucune mesure au départ
     setMinimumSize(200, 200);
-    connect(&tcplidar, &TCPclient::newDatas, this, &::WidgetLidar::processTcpDatas);
+    connect(&tcplidar, &TCPclient::newDatas, this, &WidgetLidar::processTcpDatas);
+    connect(&tcplidar, &TCPclient::connectionChanged, this, &WidgetLidar::connectionChanged);
 }
 
 void WidgetLidar::paintEvent(QPaintEvent *event)
 {
+    Q_UNUSED(event);
     QPainter painter(this);
     QPen pen;
 
@@ -36,10 +38,10 @@ void WidgetLidar::paintEvent(QPaintEvent *event)
     {
         int mesure = distancesLidar[angle];
         if (mesure > 3000)
-            mesure = 3000;                 // 3k max de dist
+            mesure = 3000;                 // distance max : 3000 (3 m)
 
         double d = mesure / 4.0;           // zoom
-        double rad = qDegreesToRadians((double)angle+180);    // degré en radians pour use cos et sin
+        double rad = qDegreesToRadians((double)angle+180);    // degrés en radians pour utiliser cos et sin
 
         double x = centreX + d * cos(rad);                // point d'arrivée du trait
         double y = centreY - d * sin(rad);                // le - car y descend sur l'écran
@@ -60,10 +62,10 @@ void WidgetLidar::processTcpDatas(QString data)
     data.remove('\n');                                // enlève les retours à la ligne
     data.remove(' ');                                 // enlève les espaces
 
-    QStringList liste = data.split(";"); // Qt::SkipEmptyParts);   // split le texte à chaque ";"
+    QStringList liste = data.split(";");   // découpe le texte à chaque ";"
 
     for (int i = 0; i < 360 && i < liste.size(); i++)
-        distancesLidar[i] = liste[i].toInt();         // texte en nombre entier et le met a la meme place que la valeur que je recois
+        distancesLidar[i] = liste[i].toInt();         // convertit le texte en entier et le range à la même position que la valeur reçue
 
-    update();                                         // actualiser a chauqe fois pour
+    update();                                         // redessine à chaque nouvelle trame
 }

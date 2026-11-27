@@ -1,55 +1,74 @@
 #include "tcpclient.h"
-#include <QIODevice>
 #include <QDataStream>
 #include <QDebug>
-#include <unistd.h>
 
-TCPclient::TCPclient(QString _Host, int _port)
+TCPclient::TCPclient(const QString &_Host, int _port, QObject *parent)
+    : QObject(parent)
+    , Host(_Host)
+    , port(_port)
 {
-    // Important : il faut lier le signal du socket au slot !
+    // Important : il faut lier les signaux du socket aux slots !
     connect(&clientSocket, &QTcpSocket::readyRead, this, &TCPclient::onReadyRead);
-    Host = _Host;
-    port = _port;
-    connectTCP();
+    connect(&clientSocket, &QTcpSocket::connected, this, &TCPclient::onConnected);
+    connect(&clientSocket, &QTcpSocket::disconnected, this, &TCPclient::onDisconnected);
 
+    // Reconnexion automatique toutes les 2 s tant que le socket n'est pas connecté
+    // (non bloquant : l'interface reste réactive)
+    connect(&reconnectTimer, &QTimer::timeout, this, &TCPclient::tryReconnect);
+    reconnectTimer.start(2000);
+    tryReconnect();
 }
 
-void TCPclient::connectTCP()
+TCPclient::~TCPclient()
 {
-    qDebug() << "Lancement de la connexion vers" << Host << "...";
-    clientSocket.connectToHost(Host, port);
+    // Évite d'émettre des signaux vers des objets déjà détruits à la fermeture
+    reconnectTimer.stop();
+    QObject::disconnect(&clientSocket, nullptr, this, nullptr);
+}
 
-    qDebug() << "Attente de la connexion (max 3s)...";
-    if (clientSocket.waitForConnected(3000)) {
-        qDebug() << "Connexion réussie ! État :" << clientSocket.state();
-    } else {
-        qDebug() << "Erreur de connexion ->" << clientSocket.errorString();
-        ReconnectConnectOrWait();
+bool TCPclient::isConnected() const
+{
+    return clientSocket.state() == QAbstractSocket::ConnectedState;
+}
+
+void TCPclient::tryReconnect()
+{
+    if (clientSocket.state() == QAbstractSocket::UnconnectedState) {
+        qDebug() << "Tentative de connexion vers" << Host << ":" << port << "...";
+        clientSocket.connectToHost(Host, static_cast<quint16>(port));
     }
-
 }
 
-void TCPclient::sendDatas(QString datas)
+void TCPclient::onConnected()
 {
-    if (clientSocket.state() != QAbstractSocket::ConnectedState) {
+    qDebug() << "Connexion réussie vers" << Host << ":" << port;
+    emit connectionChanged(true);
+}
+
+void TCPclient::onDisconnected()
+{
+    qDebug() << "Déconnecté de" << Host << ":" << port;
+    emit connectionChanged(false);
+}
+
+bool TCPclient::sendDatas(const QString &datas)
+{
+    if (!isConnected()) {
         qDebug() << "Impossible d'envoyer : le socket n'est pas connecté.";
-        return;
-        ReconnectConnectOrWait();
+        return false;
     }
 
     QByteArray block;
+    QDataStream dataOut(&block, QIODevice::WriteOnly);
+    dataOut.setVersion(QDataStream::Qt_5_0); // Doit correspondre à la version de onReadyRead
 
-    QDataStream dataIn(&block, QIODevice::WriteOnly);
+    // Qt encapsule la taille de la chaîne devant les données
+    dataOut << datas;
 
-
-    // Avec les transactions, on envoie directement la donnée
-    // Qt s'occupe d'encapsuler le type et la taille sous le capot.
-    dataIn << datas;
-
-    //Une fois le message encapsulé il est envoyé via le socket vers le serveur
+    // Une fois le message encapsulé, il est envoyé via le socket vers le serveur
     clientSocket.write(block);
     qDebug() << "Client :" << datas;
-
+    return true;
 }
 
 void TCPclient::onReadyRead()
@@ -66,22 +85,10 @@ void TCPclient::onReadyRead()
 
         if (in.commitTransaction()) {
             // La transaction a réussi, le message est complet
-            qDebug() << "Serveur :" ;
             emit newDatas(messageRecu);
         } else {
-            // on sort et on attend le prochain OnreadyRead
+            // Message incomplet : on sort et on attend le prochain readyRead
             break;
         }
     }
 }
-
-void TCPclient::ReconnectConnectOrWait()
-{
-    while(clientSocket.state() != QAbstractSocket::ConnectedState)
-    {
-        clientSocket.connectToHost(Host, port);
-        clientSocket.waitForConnected(3000);
-        sleep(1);
-    }
-}
-

@@ -9,15 +9,21 @@ class WidgetLidar : public QWidget
 {
     Q_OBJECT
 public:
-    explicit WidgetLidar(const QString &host, int port,QWidget *parent = nullptr);
-protected:
-    void paintEvent(QPaintEvent *event) override;
+    explicit WidgetLidar(const QString &host, int port, QWidget *parent = nullptr);
+    bool isConnected() const { return tcplidar.isConnected(); }
+
+signals:
+    void connectionChanged(bool connected);
 
 public slots:
     void processTcpDatas(QString data);
+
+protected:
+    void paintEvent(QPaintEvent *event) override;
+
 private:
     std::array<int, 360> distancesLidar;   // une distance par degré
     TCPclient tcplidar;
 };
 
-#endif
+#endif // WIDGETLIDAR_H
